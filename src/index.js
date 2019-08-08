@@ -18,20 +18,34 @@ let notificationServiceErrorCallback;
 let notificationReceivedCallback;
 let tokenUpdatedCallback;
 
+function isAsyncFunc(func) {
+  return func.constructor.name === "AsyncFunction";
+}
+
+function convertFuncToAsync(func) {
+  if (func !== undefined && !isAsyncFunc(func)) {
+    orig = func;
+    func = async (...args) => {
+      return orig(...args);
+    };
+  }
+  return func;
+}
+
 function setNotificationServiceStartedCallback(callback) {
-  notificationServiceStartedCallback = callback;
+  notificationServiceStartedCallback = convertFuncToAsync(callback);
 }
 
 function setNotificationServiceErrorCallback(callback) {
-  notificationServiceErrorCallback = callback;
+  notificationServiceErrorCallback = convertFuncToAsync(callback);
 }
 
 function setNotificationReceivedCallback(callback) {
-  notificationReceivedCallback = callback;
+  notificationReceivedCallback = convertFuncToAsync(callback);
 }
 
 function setTokenUpdatedCallback(callback) {
-  tokenUpdatedCallback = callback;
+  tokenUpdatedCallback = convertFuncToAsync(callback);
 }
 
 async function startNotificationService(senderId) {
@@ -41,7 +55,7 @@ async function startNotificationService(senderId) {
   const savedSenderId = config.get('senderId');
   if (started) {
     if (notificationServiceStartedCallback) {
-      notificationServiceStartedCallback((credentials.fcm || {}).token);
+      await notificationServiceStartedCallback((credentials.fcm || {}).token);
     }
     return;
   }
@@ -58,33 +72,33 @@ async function startNotificationService(senderId) {
       config.set('senderId', senderId);
       // Notify the renderer process that the FCM token has changed
       if (tokenUpdatedCallback) {
-        tokenUpdatedCallback(credentials.fcm.token);
+        await tokenUpdatedCallback(credentials.fcm.token);
       }
     }
     // Listen for GCM/FCM notifications
     await listen(Object.assign({}, credentials, { persistentIds }), onNotification(notificationReceivedCallback));
     // Notify the renderer process that we are listening for notifications
     if (notificationServiceStartedCallback) {
-      notificationServiceStartedCallback(credentials.fcm.token);
+      await notificationServiceStartedCallback(credentials.fcm.token);
     }
   } catch (e) {
     console.error('PUSH_RECEIVER:::Error while starting the service', e);
     // Forward error to the renderer process
     if (notificationServiceErrorCallback) {
-      notificationServiceErrorCallback(e.message);
+      await notificationServiceErrorCallback(e.message);
     }
   }
 };
 
 // Will be called on new notification
 function onNotification(notificationReceivedCallback) {
-  return ({ notification, persistentId }) => {
+  return async ({ notification, persistentId }) => {
     const persistentIds = config.get('persistentIds') || [];
     // Update persistentId
     config.set('persistentIds', [...persistentIds, persistentId]);
     // Notify the renderer process that a new notification has been received
     if (notificationReceivedCallback) {
-      notificationReceivedCallback(notification);
+      await notificationReceivedCallback(notification);
     }
   };
 }
